@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>JARVIS Boot Failure</title>
+  <style>
+    body {
+      background: #090d16;
+      color: #cbd5e1;
+      font-family: 'Consolas', monospace;
+      padding: 20px;
+      margin: 0;
+      box-sizing: border-box;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    h1 {
+      color: #ef4444;
+      font-size: 16px;
+      margin: 0 0 5px 0;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+      padding-bottom: 8px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      background: #020617;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid rgba(6, 182, 212, 0.1);
+    }
+    .status-item {
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .label {
+      color: #64748b;
+      margin-right: 5px;
+    }
+    .logs-header {
+      font-size: 11px;
+      color: #06b6d4;
+      text-transform: uppercase;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    textarea {
+      flex: 1;
+      background: #020617;
+      border: 1px solid rgba(6, 182, 212, 0.15);
+      color: #94a3b8;
+      font-family: 'Consolas', monospace;
+      font-size: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      resize: none;
+      outline: none;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    button {
+      background: rgba(6, 182, 212, 0.05);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      color: #06b6d4;
+      padding: 8px 16px;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: rgba(6, 182, 212, 0.15);
+      border-color: #06b6d4;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
+    }
+    button.primary {
+      background: #ef4444;
+      border-color: #f87171;
+      color: white;
+    }
+    button.primary:hover {
+      background: #dc2626;
+      border-color: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <h1>SYSTEM ERROR: CORES LINK INITIALISATION TIMEOUT</h1>
+  
+  <div class="status-grid">
+    <div class="status-item"><span class="label">Target Port:</span> <span id="port-status">...</span></div>
+    <div class="status-item"><span class="label">Boot Mode:</span> <span id="mode-status">...</span></div>
+    <div class="status-item"><span class="label">Database:</span> <span id="db-status">...</span></div>
+    <div class="status-item"><span class="label">WhatsApp Link:</span> <span id="wa-status">...</span></div>
+    <div class="status-item" style="grid-column: span 2"><span class="label">MCP Servers Status:</span> <span id="mcp-status">...</span></div>
+  </div>
+
+  <div class="logs-header">Diagnostic Log Tail</div>
+  <textarea id="log-tail" readonly></textarea>
+
+  <div class="actions">
+    <button onclick="openLogs()">Open Logs Folder</button>
+    <button onclick="exitApp()">Exit</button>
+    <button class="primary" onclick="retry()">Retry Boot</button>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    async function loadDiagnostics() {
+      const data = await ipcRenderer.invoke('get-diagnostics');
+      document.getElementById('port-status').innerText = data.port;
+      document.getElementById('mode-status').innerText = data.safeMode ? 'SAFE MODE (DIAGNOSTICS)' : 'PRODUCTION';
+      document.getElementById('db-status').innerText = data.databaseStatus;
+      document.getElementById('wa-status').innerText = data.whatsappStatus;
+      document.getElementById('mcp-status').innerText = data.mcpStatus;
+      document.getElementById('log-tail').value = data.logTail;
+    }
+
+    function retry() {
+      ipcRenderer.send('retry-boot');
+    }
+
+    function openLogs() {
+      ipcRenderer.send('open-logs-folder');
+    }
+
+    function exitApp() {
+      ipcRenderer.send('exit-app');
+    }
+
+    window.onload = loadDiagnostics;
+  </script>
+</body>
+</html>

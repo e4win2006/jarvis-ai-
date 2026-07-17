@@ -1,0 +1,39 @@
+appId: com.jarvis.app
+productName: JARVIS
+
+directories:
+  output: dist-electron
+
+# Files bundled inside the .asar (Electron app files)
+files:
+  - dist/**/*
+  - main.cjs
+  - splash.html
+  - error.html
+  - package.json
+
+# Extra files placed in resources/ folder (accessible via process.resourcesPath)
+extraResources:
+  - from: dist
+    to: dist
+  - from: server/dist
+    to: server/dist
+  - from: server/node_modules
+    to: server/node_modules
+  - from: server/package.json
+    to: server/package.json
+  - from: "C:/Program Files/nodejs/node.exe"
+    to: node.exe
+
+win:
+  target: nsis
+  icon: null
+  signExecutable: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: JARVIS
+  runAfterFinish: true
