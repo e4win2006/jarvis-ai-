@@ -12,7 +12,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"npm run dev --prefix server\" \"electron .\"",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder",
+    "predeploy": "vite build",
+    "deploy": "npx gh-pages -d dist"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",
