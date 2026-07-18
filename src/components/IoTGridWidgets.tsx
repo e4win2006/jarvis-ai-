@@ -10,9 +10,10 @@ import { API_BASE } from '../utils/apiConfig';
 
 interface IoTGridWidgetsProps {
   devices: any; // returned by useIoTDevices
+  role?: string;
 }
 
-export function IoTGridWidgets({ devices }: IoTGridWidgetsProps) {
+export function IoTGridWidgets({ devices, role = 'user' }: IoTGridWidgetsProps) {
   const {
     lights, thermostat, locks, vacuum, media, cameraAlert, cameraLog, powerUsage,
     setLightState, setLightColor, setLightBrightness,
@@ -738,7 +739,8 @@ export function IoTGridWidgets({ devices }: IoTGridWidgetsProps) {
       </div>
 
       {/* 8. WHATSAPP COMMAND UPLINK CARD */}
-      <div className="hud-panel flex flex-col gap-3">
+      {role === 'owner' && (
+        <div className="hud-panel flex flex-col gap-3">
         <div className="hud-corner-tl"></div>
         <div className="hud-corner-tr"></div>
         <div className="hud-corner-bl"></div>
@@ -899,6 +901,7 @@ export function IoTGridWidgets({ devices }: IoTGridWidgetsProps) {
           </div>
         </div>
       </div>
+      )}
 
       {/* 7. ENERGY CENTRAL HUD (Full width on large screens) */}
       <div className="hud-panel col-span-1 md:col-span-2 lg:col-span-3 flex flex-col gap-3">

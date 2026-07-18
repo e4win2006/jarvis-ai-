@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Mic, MicOff, Send, Power, ChevronUp, Zap } from 'lucide-react';
+import { LogOut, Settings, Shield, Mic, MicOff, Send, Power, ChevronUp, Zap } from 'lucide-react';
 import { useIoTDevices } from './hooks/useIoTDevices';
 import { JarvisCore } from './components/JarvisCore';
 import { SettingsModal } from './components/SettingsModal';
@@ -8,7 +8,10 @@ import { FirstRunWizard } from './components/FirstRunWizard';
 import { jarvisEngine, defaultTrackList } from './utils/jarvisEngine';
 import type { EngineLog, EngineConfig } from './utils/jarvisEngine';
 import { sounds } from './utils/sounds';
-import { API_BASE, WS_BASE } from './utils/apiConfig';
+import { API_BASE, IS_GITHUB_PAGES_WITHOUT_API, WS_BASE } from './utils/apiConfig';
+import { SignInPage } from './components/SignInPage';
+import { AdminDashboard } from './components/AdminDashboard';
+import { getSession, signOut, type JarvisSession } from './utils/auth';
 
 // Chat message shape
 interface ChatMessage {
@@ -19,6 +22,7 @@ interface ChatMessage {
 }
 
 export default function App() {
+  const [session, setSession] = useState<JarvisSession | null>(getSession());
   const [isOnboarding, setIsOnboarding] = useState(!localStorage.getItem('jarvis_onboarding_done'));
   const devices = useIoTDevices();
   const { powerUsage } = devices;
@@ -35,6 +39,7 @@ export default function App() {
   const [input, setInput] = useState('');
   const [engineConfig, setEngineConfig] = useState<EngineConfig>(jarvisEngine.getConfig());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [showDevices, setShowDevices] = useState(false);
   const [systemTime, setSystemTime] = useState(new Date());
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -46,6 +51,10 @@ export default function App() {
 
   useEffect(() => {
     // Load config from localStorage and backend
+    if (IS_GITHUB_PAGES_WITHOUT_API) {
+      addMessage('system', 'GitHub Pages is static hosting. Connect VITE_API_BASE to a deployed JARVIS API server before using online AI.');
+    }
+
     const saved = localStorage.getItem('jarvis_config');
     if (saved) {
       try {
@@ -67,6 +76,8 @@ export default function App() {
             ollamaModel: data.ollama_model,
             lmstudioUrl: data.lmstudio_url,
             geminiKey: data.gemini_key,
+            groqKey: data.groq_key,
+            groqModel: data.groq_model,
             customApiUrl: data.custom_api_url,
             customApiKey: data.custom_api_key,
             customApiModel: data.custom_api_model,
@@ -125,6 +136,13 @@ export default function App() {
 
     // WebSocket for alerts
     const ws = new WebSocket(WS_BASE);
+    
+    ws.onopen = () => {
+      if (session) {
+        ws.send(JSON.stringify({ type: 'identify', username: session.username }));
+      }
+    };
+
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
@@ -140,7 +158,7 @@ export default function App() {
       clearInterval(clockInterval);
       ws.close();
     };
-  }, []);
+  }, [session]);
 
   const addMessage = (role: ChatMessage['role'], text: string) => {
     setMessages(prev => [...prev, {
@@ -158,7 +176,7 @@ export default function App() {
     addMessage('user', cmd);
 
     // Process through jarvis engine
-    await jarvisEngine.processCommand(cmd);
+    await jarvisEngine.processCommand(cmd, session);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -184,7 +202,9 @@ export default function App() {
         gemini_key: finalConfig.geminiKey,
         custom_api_url: finalConfig.customApiUrl,
         custom_api_key: finalConfig.customApiKey,
-        custom_api_model: finalConfig.customApiModel
+        custom_api_model: finalConfig.customApiModel,
+        groq_key: finalConfig.groqKey,
+        groq_model: finalConfig.groqModel
       })
     }).catch(() => {});
     addMessage('system', `AI backend set to ${finalConfig.backend.toUpperCase()}`);
@@ -193,6 +213,9 @@ export default function App() {
   const isOnline = engineConfig.backend !== 'offline';
   const stateLabel = { idle: 'Ready', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking' }[jarvisState];
 
+  if (!session) {
+    return <SignInPage onSignedIn={setSession} />;
+  }
 
   if (isOnboarding) {
     return <FirstRunWizard onComplete={() => setIsOnboarding(false)} />;
@@ -238,6 +261,21 @@ export default function App() {
             {systemTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
 
+          <span className="pill" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+            {session.displayName}
+          </span>
+
+          {session.role === 'owner' && (
+            <button
+              className="icon-btn"
+              onClick={() => { sounds.playPing(); setIsAdminOpen(true); }}
+              title="Admin dashboard"
+              style={{ width: 32, height: 32 }}
+            >
+              <Shield size={14} />
+            </button>
+          )}
+
           <button
             className="icon-btn"
             onClick={() => setShowDevices(v => !v)}
@@ -254,6 +292,18 @@ export default function App() {
             style={{ width: 32, height: 32 }}
           >
             <Settings size={14} />
+          </button>
+
+          <button
+            className="icon-btn"
+            onClick={() => {
+              signOut();
+              setSession(null);
+            }}
+            title="Sign out"
+            style={{ width: 32, height: 32 }}
+          >
+            <LogOut size={14} />
           </button>
         </div>
       </header>
@@ -272,7 +322,7 @@ export default function App() {
               <ChevronUp size={12} />
             </button>
           </div>
-          <IoTGridWidgets devices={devices} />
+          <IoTGridWidgets devices={devices} role={session?.role} />
         </div>
       )}
 
@@ -288,7 +338,7 @@ export default function App() {
             setState={setJarvisState}
             onCommandProcessed={(cmd) => {
               addMessage('user', cmd);
-              jarvisEngine.processCommand(cmd);
+              jarvisEngine.processCommand(cmd, session);
             }}
           />
         </div>
@@ -382,6 +432,13 @@ export default function App() {
           config={engineConfig}
           onSave={handleSaveConfig}
           onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
+
+      {isAdminOpen && session.role === 'owner' && (
+        <AdminDashboard
+          currentUsername={session.username}
+          onClose={() => setIsAdminOpen(false)}
         />
       )}
     </div>

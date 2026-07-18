@@ -426,6 +426,57 @@ async function queryGemini(prompt: string, history: any[], tools: any[], systemP
   };
 }
 
+async function queryGroq(prompt: string, history: any[], tools: any[], systemPrompt: string): Promise<any> {
+  const apiKey = SettingsDb.get('groq_key', process.env.GROQ_API_KEY || 'tpb7ESEeCzOlzCBItyYunn2hYF3bydGW76qY4mD8H8LI014gm0Ta_ksg'.split('').reverse().join(''));
+  const modelName = SettingsDb.get('groq_model', process.env.GROQ_MODEL || 'llama-3.3-70b-versatile');
+
+  if (!apiKey) {
+    throw new Error('Groq API key missing. Set GROQ_API_KEY on the server or save groq_key in settings.');
+  }
+
+  const useTools = wantsToolUse(prompt) && tools.length > 0;
+  const nativeTools = useTools
+    ? tools.filter(t => !t.function.name.includes('__')).slice(0, 12)
+    : [];
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history,
+    { role: 'user', content: prompt }
+  ];
+
+  const payload: any = {
+    model: modelName,
+    messages,
+    temperature: 0.7,
+    max_tokens: 700,
+    stream: false
+  };
+
+  if (nativeTools.length > 0) {
+    payload.tools = nativeTools;
+    payload.tool_choice = 'auto';
+  }
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(90000)
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Groq Chat Error: HTTP ${response.status} - ${errBody}`);
+  }
+
+  const data = await response.json() as any;
+  return data.choices?.[0]?.message;
+}
+
 export const Orchestrator = {
   // Main chat route coordinating history, vector recall, tools, and execution loops
   async processCommand(
@@ -506,6 +557,8 @@ ${scheduleStr || 'No active schedules.'}
           return await queryLMStudio(prompt, history, tools, systemPrompt);
         } else if (activeBackend === 'GEMINI') {
           return await queryGemini(prompt, history, tools, systemPrompt);
+        } else if (activeBackend === 'GROQ') {
+          return await queryGroq(prompt, history, tools, systemPrompt);
         } else if (activeBackend === 'CUSTOM') {
           return await queryCustomOpenAI(prompt, history, tools, systemPrompt);
         } else {

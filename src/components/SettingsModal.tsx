@@ -19,6 +19,8 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
   const [ollamaUrl, setOllamaUrl] = useState(config.ollamaUrl);
   const [ollamaModel, setOllamaModel] = useState(config.ollamaModel);
   const [geminiKey, setGeminiKey] = useState(config.geminiKey);
+  const [groqKey, setGroqKey] = useState(config.groqKey);
+  const [groqModel, setGroqModel] = useState(config.groqModel || 'llama-3.3-70b-versatile');
   const [lmstudioUrl, setLmstudioUrl] = useState(config.lmstudioUrl || DEFAULT_LMSTUDIO_URL);
   const [voiceName, setVoiceName] = useState(config.voiceName);
   const [speechRate, setSpeechRate] = useState(config.speechRate);
@@ -121,6 +123,8 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
       ollamaUrl,
       ollamaModel,
       geminiKey,
+      groqKey,
+      groqModel,
       lmstudioUrl,
       customApiUrl,
       customApiKey,
@@ -295,6 +299,7 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
                     { id: 'offline', name: 'Offline', desc: 'Regex patterns (instant)' },
                     { id: 'ollama', name: 'Ollama', desc: 'Ollama models (port 11434)' },
                     { id: 'gemini', name: 'Gemini', desc: 'Gemini 2.5 Flash API' },
+                    { id: 'groq', name: 'Groq', desc: 'Hosted fast Llama models' },
                     { id: 'lmstudio', name: 'LM Studio', desc: 'Local OpenAI server (port 1234)' },
                     { id: 'custom', name: 'Custom API', desc: 'Custom OpenAI-compatible provider' }
                   ].map((item) => (
@@ -339,6 +344,34 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
                     >
                       {showKey ? 'HIDE' : 'SHOW'}
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {backend === 'groq' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-cyan-500/5 animate-in slide-in-from-top-1 duration-200">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Groq Model</label>
+                    <input
+                      type="text"
+                      value={groqModel}
+                      onChange={(e) => setGroqModel(e.target.value)}
+                      className="hud-input text-xs p-1.5 h-8 font-mono text-cyan-400"
+                      placeholder="llama-3.3-70b-versatile"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase font-mono text-slate-400 font-bold flex items-center gap-1">
+                      <Key className="w-3 h-3 text-cyan-400" />
+                      Groq API Key
+                    </label>
+                    <input
+                      type={showKey ? 'text' : 'password'}
+                      value={groqKey}
+                      onChange={(e) => setGroqKey(e.target.value)}
+                      className="hud-input text-xs p-1.5 h-8 font-mono text-cyan-400"
+                      placeholder="gsk-..."
+                    />
                   </div>
                 </div>
               )}

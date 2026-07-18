@@ -158,7 +158,7 @@ export function FirstRunWizard({ onComplete }: FirstRunWizardProps) {
           {step === 1 && (
             <div className="flex flex-col gap-4 animate-in fade-in duration-200">
               <p className="text-xs leading-relaxed text-slate-400">
-                Welcome to JARVIS, Edwin Tom Joseph's personal system assistant. Let us configure your local storage link parameter.
+                Welcome to JARVIS, the advanced personal system assistant. Let us configure your local storage link parameter.
               </p>
               <div className="flex flex-col gap-2 pt-2">
                 <button

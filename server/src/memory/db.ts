@@ -74,6 +74,14 @@ db.exec(`
     metadata TEXT,
     embedding TEXT
   );
+  
+  CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    displayName TEXT,
+    role TEXT,
+    allowed INTEGER,
+    passwordHash TEXT
+  );
 `);
 
 // Alter table safety check for existing databases

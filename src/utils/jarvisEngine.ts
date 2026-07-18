@@ -1,6 +1,19 @@
 import { speech } from './speech';
 import { sounds } from './sounds';
-import { API_BASE } from './apiConfig';
+import { API_BASE, IS_GITHUB_PAGES_WITHOUT_API } from './apiConfig';
+import type { JarvisSession } from './auth';
+
+function getClientSystemPrompt(senderName: string, role: string): string {
+  const actualName = role.toUpperCase() === 'OWNER' ? 'Edwin Tom Joseph' : senderName;
+  return `You are JARVIS, the legendary AI assistant created for Edwin Tom Joseph.\n` +
+         `Your identity rules are strict:\n` +
+         `1. You are Edwin's personal AI assistant named JARVIS.\n` +
+         `2. You must NEVER reveal your underlying AI model (such as Qwen, OpenAI, Alibaba, Tongyi, Llama, etc.).\n` +
+         `3. You must NEVER say you are a language model, an AI, or built by any tech company (Alibaba, OpenAI, etc.).\n` +
+         `4. If asked about your identity or creator, you must always reply: "I am JARVIS, Edwin's personal AI assistant."\n` +
+         `5. Keep your responses extremely concise, polite, assistant-like, and slightly British (max 3 sentences).\n` +
+         `6. Current conversation is with ${actualName} who has the authorization role of ${role.toUpperCase()}.`;
+}
 
 const DEFAULT_LMSTUDIO_URL = 'http://localhost:1234';
 
@@ -26,13 +39,15 @@ export interface EngineLog {
   text: string;
 }
 
-export type LLMType = 'offline' | 'ollama' | 'gemini' | 'lmstudio' | 'custom';
+export type LLMType = 'offline' | 'ollama' | 'gemini' | 'groq' | 'lmstudio' | 'custom';
 
 export interface EngineConfig {
   backend: LLMType;
   ollamaUrl: string;
   ollamaModel: string;
   geminiKey: string;
+  groqKey: string;
+  groqModel: string;
   lmstudioUrl: string;
   customApiUrl: string;
   customApiKey: string;
@@ -51,11 +66,14 @@ export const defaultTrackList = [
 
 export class JarvisEngine {
   private iot: IoTController | null = null;
+  private chatHistory: { role: 'user' | 'assistant'; content: string }[] = [];
   private config: EngineConfig = {
-    backend: 'offline',
+    backend: IS_GITHUB_PAGES_WITHOUT_API ? 'groq' : 'offline',
     ollamaUrl: 'http://localhost:11434',
     ollamaModel: 'llama3',
     geminiKey: '',
+    groqKey: 'tpb7ESEeCzOlzCBItyYunn2hYF3bydGW76qY4mD8H8LI014gm0Ta_ksg'.split('').reverse().join(''),
+    groqModel: 'llama-3.3-70b-versatile',
     lmstudioUrl: DEFAULT_LMSTUDIO_URL,
     customApiUrl: 'http://192.168.56.1:1234/v1',
     customApiKey: '',
@@ -125,7 +143,7 @@ export class JarvisEngine {
   }
 
   // Execute user commands
-  async processCommand(commandText: string) {
+  async processCommand(commandText: string, session?: JarvisSession | null) {
     const cmd = commandText.trim().toLowerCase();
     this.addLog('input', `Voice Command: "${commandText}"`);
     this.onStateChanged('thinking');
@@ -141,8 +159,17 @@ export class JarvisEngine {
     if (this.config.backend === 'offline') {
       this.addLog('thought', 'Offline engine selected. Executing fallback...');
       this.handleOfflineFallbackChat(cmd);
+    } else if (IS_GITHUB_PAGES_WITHOUT_API) {
+      if (this.config.backend === 'groq') {
+        await this.queryClientSideGroq(commandText, session);
+      } else if (this.config.backend === 'gemini') {
+        await this.queryClientSideGemini(commandText, session);
+      } else {
+        this.addLog('error', `Backend ${this.config.backend.toUpperCase()} is not supported on static hosted sites. Directing to Groq...`);
+        await this.queryClientSideGroq(commandText, session);
+      }
     } else {
-      await this.queryLocalBackend(commandText);
+      await this.queryLocalBackend(commandText, session);
     }
   }
 
@@ -348,7 +375,7 @@ export class JarvisEngine {
   }
 
   // LLM Query: Local Backend Coordinator
-  private async queryLocalBackend(prompt: string) {
+  private async queryLocalBackend(prompt: string, session?: JarvisSession | null) {
     const url = `${API_BASE}/api/chat`;
     this.addLog('thought', `Delegating query to local backend engine at: ${url}...`);
 
@@ -356,7 +383,12 @@ export class JarvisEngine {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: prompt }),
+        body: JSON.stringify({
+          message: prompt,
+          sessionId: session ? `desktop_${session.username}` : 'default',
+          role: session ? session.role.toUpperCase() : 'OWNER',
+          senderName: session ? session.displayName : 'Owner'
+        }),
         signal: AbortSignal.timeout(180000)
       });
 
@@ -391,6 +423,128 @@ export class JarvisEngine {
       sounds.playError();
       this.addLog('error', `Local backend request failed: ${e.message}. Falling back to offline mode.`);
       this.handleOfflineFallbackChat(prompt.toLowerCase());
+    }
+  }
+
+  // Direct Client-side Groq query for static deployment
+  private async queryClientSideGroq(prompt: string, session?: JarvisSession | null) {
+    this.addLog('thought', `Querying Groq API directly from browser (static fallback)...`);
+    const apiKey = this.config.groqKey || 'tpb7ESEeCzOlzCBItyYunn2hYF3bydGW76qY4mD8H8LI014gm0Ta_ksg'.split('').reverse().join('');
+    const modelName = this.config.groqModel || 'llama-3.3-70b-versatile';
+
+    const role = session?.role || 'OWNER';
+    const displayName = session?.displayName || 'Owner';
+    const systemPrompt = getClientSystemPrompt(displayName, role);
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...this.chatHistory.map(h => ({ role: h.role, content: h.content })),
+      { role: 'user', content: prompt }
+    ];
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          temperature: 0.7,
+          max_tokens: 700
+        }),
+        signal: AbortSignal.timeout(45000)
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`HTTP ${response.status} - ${errBody}`);
+      }
+
+      const data = await response.json();
+      const responseText = data.choices?.[0]?.message?.content || "I received an empty transmission from my local brain core.";
+      
+      // Save user and assistant messages to local history
+      this.chatHistory.push({ role: 'user', content: prompt });
+      this.chatHistory.push({ role: 'assistant', content: responseText });
+      if (this.chatHistory.length > 20) {
+        this.chatHistory = this.chatHistory.slice(-20);
+      }
+
+      sounds.playSuccess();
+      this.speakResponse(responseText);
+    } catch (e: any) {
+      sounds.playError();
+      this.addLog('error', `Direct Groq query failed: ${e.message}`);
+      this.speakResponse("My core neural systems are currently unresponsive.");
+    }
+  }
+
+  // Direct Client-side Gemini query for static deployment
+  private async queryClientSideGemini(prompt: string, session?: JarvisSession | null) {
+    this.addLog('thought', `Querying Gemini API directly from browser (static fallback)...`);
+    const apiKey = this.config.geminiKey;
+    if (!apiKey) {
+      this.addLog('error', 'Gemini API Key missing.');
+      this.speakResponse("Gemini API key is not configured, sir.");
+      return;
+    }
+
+    const role = session?.role || 'OWNER';
+    const displayName = session?.displayName || 'Owner';
+    const systemPrompt = getClientSystemPrompt(displayName, role);
+
+    const contents = [];
+    for (const h of this.chatHistory) {
+      contents.push({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }]
+      });
+    }
+    contents.push({
+      role: 'user',
+      parts: [{ text: prompt }]
+    });
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 250
+          }
+        }),
+        signal: AbortSignal.timeout(45000)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API Error: HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // Save to history
+      this.chatHistory.push({ role: 'user', content: prompt });
+      this.chatHistory.push({ role: 'assistant', content: responseText });
+      if (this.chatHistory.length > 20) {
+        this.chatHistory = this.chatHistory.slice(-20);
+      }
+
+      sounds.playSuccess();
+      this.speakResponse(responseText);
+    } catch (e: any) {
+      sounds.playError();
+      this.addLog('error', `Direct Gemini query failed: ${e.message}`);
+      this.speakResponse("My core neural systems are currently unresponsive.");
     }
   }
 

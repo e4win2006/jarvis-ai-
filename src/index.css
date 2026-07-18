@@ -652,3 +652,246 @@ button {
     width: 320px;
   }
 }
+
+/* Auth and owner controls */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-panel {
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  background: rgba(4, 8, 20, 0.82);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), inset 0 0 16px rgba(0, 240, 255, 0.05);
+  backdrop-filter: blur(16px);
+}
+
+.auth-mark {
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00f0ff;
+  border: 1px solid rgba(0, 240, 255, 0.24);
+  border-radius: 50%;
+  background: rgba(0, 240, 255, 0.06);
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.16);
+}
+
+.auth-panel h1 {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.auth-copy,
+.auth-message {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auth-message {
+  color: var(--amber);
+}
+
+.auth-label {
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-input {
+  width: 100%;
+  min-height: 42px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.auth-input:focus {
+  border-color: #00f0ff;
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.12);
+}
+
+.auth-submit,
+.auth-link {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.auth-submit {
+  color: #001014;
+  background: #00f0ff;
+}
+
+.auth-submit:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.auth-link {
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+.auth-link:hover {
+  color: var(--text);
+  border-color: rgba(0, 240, 255, 0.35);
+}
+
+.admin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.admin-panel {
+  width: min(100%, 680px);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  background: #0a0d16;
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 8px;
+}
+
+.admin-header,
+.admin-user,
+.admin-actions,
+.admin-stats {
+  display: flex;
+  align-items: center;
+}
+
+.admin-header {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #00f0ff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-header h2 {
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.admin-stats {
+  gap: 10px;
+}
+
+.admin-stats div {
+  flex: 1;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.admin-stats span {
+  display: block;
+  color: #00f0ff;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.admin-stats p,
+.admin-user p {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-user {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.admin-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-action {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 5px;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.admin-action.approve {
+  color: var(--green);
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.admin-action.danger {
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+@media (max-width: 620px) {
+  .admin-user,
+  .admin-stats {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-actions {
+    justify-content: stretch;
+  }
+
+  .admin-action {
+    flex: 1;
+  }
+}
