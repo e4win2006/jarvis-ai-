@@ -69,6 +69,69 @@ export const defaultTrackList = [
   { title: "Cyberpunk Resonance", artist: "Jarvis Core Synth", videoId: "gbcR5gZcK2U" }
 ];
 
+async function clientSideSearch(query: string): Promise<any[]> {
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: 'sk-2c7546c9dda542308baba01e62766ade',
+        query,
+        search_depth: 'basic',
+        max_results: 5
+      })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const results = (data.results || []).map((item: any) => ({
+        title: item.title,
+        link: item.url,
+        snippet: item.content
+      }));
+      if (results.length > 0) {
+        return results;
+      }
+    }
+  } catch (e) {
+    console.warn("Client-side Tavily search failed, falling back to DuckDuckGo:", e);
+  }
+
+  // Fallback to DuckDuckGo
+  try {
+    const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error();
+    const html = await response.text();
+    
+    const results: any[] = [];
+    const resultBlockRegex = /<div class="result(?: results_links)?[\s\S]*?">([\s\S]*?)(?=<div class="result|$)/g;
+    let match;
+    let limit = 4;
+    
+    while ((match = resultBlockRegex.exec(html)) !== null && limit > 0) {
+      const block = match[1];
+      const titleLinkMatch = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
+      const snippetMatch = /<a[^>]*class="result__snippet"[\s\S]*?>([\s\S]*?)<\/a>/.exec(block) ||
+                           /<div[^>]*class="result__snippet"[\s\S]*?>([\s\S]*?)<\/div>/.exec(block);
+      if (titleLinkMatch) {
+        const rawLink = titleLinkMatch[1].trim();
+        const link = rawLink.includes('uddg=')
+          ? decodeURIComponent(rawLink.split('uddg=')[1].split('&')[0])
+          : rawLink.replace(/^\/\//, 'https://');
+        const title = titleLinkMatch[2].replace(/<[^>]*>/g, '').trim();
+        const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]*>/g, '').trim() : '';
+        results.push({ title, link, snippet });
+        limit--;
+      }
+    }
+    return results;
+  } catch (e) {
+    console.error("Client-side search failed:", e);
+    return [];
+  }
+}
+
 export class JarvisEngine {
   private iot: IoTController | null = null;
   private chatHistory: { role: 'user' | 'assistant'; content: string }[] = [];
@@ -468,8 +531,25 @@ export class JarvisEngine {
     const displayName = session?.displayName || 'Owner';
     const systemPrompt = getClientSystemPrompt(displayName, role);
 
-    const messages = [
-      { role: 'system', content: systemPrompt },
+    let searchContext = '';
+    const needsSearch = /\b(search|look up|weather|news|stock|google|ddg|duckduckgo|internet)\b/i.test(prompt);
+    if (needsSearch) {
+      this.addLog('action', `Pre-emptively executing client-side web search...`);
+      try {
+        const results = await clientSideSearch(prompt);
+        this.addLog('system', `Search retrieved ${results.length} items.`);
+        if (results && results.length > 0) {
+          searchContext = `\n\n[Internet Search Context]\nHere are the top web search results for "${prompt}":\n` + 
+            results.map((r, i) => `[${i+1}] ${r.title} - ${r.link}\nSnippet: ${r.snippet}`).join('\n\n') +
+            `\nUse the search results to formulate a precise answer.`;
+        }
+      } catch (e) {
+        this.addLog('error', `Pre-emptive search failed.`);
+      }
+    }
+
+    const messages: any[] = [
+      { role: 'system', content: systemPrompt + searchContext },
       ...this.chatHistory.map(h => ({ role: h.role, content: h.content })),
       { role: 'user', content: prompt }
     ];
@@ -528,7 +608,24 @@ export class JarvisEngine {
     const displayName = session?.displayName || 'Owner';
     const systemPrompt = getClientSystemPrompt(displayName, role);
 
-    const contents = [];
+    let searchContext = '';
+    const needsSearch = /\b(search|look up|weather|news|stock|google|ddg|duckduckgo|internet)\b/i.test(prompt);
+    if (needsSearch) {
+      this.addLog('action', `Pre-emptively executing client-side web search...`);
+      try {
+        const results = await clientSideSearch(prompt);
+        this.addLog('system', `Search retrieved ${results.length} items.`);
+        if (results && results.length > 0) {
+          searchContext = `\n\n[Internet Search Context]\nHere are the top web search results for "${prompt}":\n` + 
+            results.map((r, i) => `[${i+1}] ${r.title} - ${r.link}\nSnippet: ${r.snippet}`).join('\n\n') +
+            `\nUse the search results to formulate a precise answer.`;
+        }
+      } catch (e) {
+        this.addLog('error', `Pre-emptive search failed.`);
+      }
+    }
+
+    const contents: any[] = [];
     for (const h of this.chatHistory) {
       contents.push({
         role: h.role === 'assistant' ? 'model' : 'user',
@@ -548,10 +645,10 @@ export class JarvisEngine {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents,
-          systemInstruction: { parts: [{ text: systemPrompt }] },
+          systemInstruction: { parts: [{ text: systemPrompt + searchContext }] },
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 250
+            maxOutputTokens: 500
           }
         }),
         signal: AbortSignal.timeout(45000)
