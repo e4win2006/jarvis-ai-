@@ -535,24 +535,54 @@ export class JarvisEngine {
     const systemPrompt = getClientSystemPrompt(displayName, role);
 
     let searchContext = '';
-    const needsSearch = /\b(search|look up|weather|news|stock|google|ddg|duckduckgo|internet|latest|recent|today|current|update|happening)\b/i.test(prompt);
-    const isNewsQuery = /\b(news|latest|recent|today|current|update|happening|announce|release)\b/i.test(prompt);
+
+    // Smart search trigger — catches: explicit "search X", sports/events results, current year queries, news
+    const needsSearch =
+      /^search\b/i.test(prompt.trim()) ||  // starts with "search ..."
+      /\b(search|look up|look for|find out|google|browse|internet|web search)\b/i.test(prompt) ||
+      /\b(weather|stock|price|score|result|winner|champion|won|defeated|beat|beat|match|game|tournament|election|war|crisis|event|launch|release|announce)\b/i.test(prompt) ||
+      /\b(news|latest|recent|today|current|update|happening|breaking|just happened|right now)\b/i.test(prompt) ||
+      /\b(20(24|25|26))\b/.test(prompt);  // queries mentioning current years
+
+    const isNewsQuery = /\b(news|latest|recent|today|current|update|happening|announce|release|winner|champion|won|score|result)\b/i.test(prompt);
+
+    // Build a focused, clean search query (strips "search" prefix, adds context)
+    function extractSearchQuery(raw: string): string {
+      // Strip leading "search" command word
+      let q = raw.replace(/^search\s+(for\s+|about\s+|the\s+)?/i, '').trim();
+      // Strip "who won in YEAR" → add sport context from recent history if available
+      if (/^who won/i.test(q) && !/\b(fifa|world cup|nba|nfl|cricket|tennis|olympic|championship)\b/i.test(q)) {
+        // Try to inject sport context from the raw year mention
+        const yearMatch = q.match(/\b(20\d{2})\b/);
+        if (yearMatch) {
+          q = `${q} results ${yearMatch[1]}`;
+        }
+      }
+      return q || raw;
+    }
+
+    const searchQuery = extractSearchQuery(prompt);
+
     if (needsSearch) {
       this.addLog('action', `Pre-emptively executing client-side web search...`);
       try {
-        const results = await clientSideSearch(prompt, isNewsQuery);
-        this.addLog('system', `Search retrieved ${results.length} items.`);
+        const results = await clientSideSearch(searchQuery, isNewsQuery);
+        this.addLog('system', `Search retrieved ${results.length} items for: "${searchQuery}"`);
         if (results && results.length > 0) {
           const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
           searchContext = `\n\n[Internet Search Context — as of ${todayStr}]\n` +
-            `These are RECENT web results (last 7 days). Only use this information — do NOT use older knowledge for this topic:\n` +
+            `Search query used: "${searchQuery}"\n` +
+            `These are RECENT web results (last 7 days). Base your answer ONLY on these results:\n` +
             results.map((r, i) => `[${i+1}] ${r.title}${r.publishedDate ? ` (${r.publishedDate})` : ''}\n    URL: ${r.link}\n    Summary: ${r.snippet}`).join('\n\n') +
-            `\n\nIMPORTANT: Base your answer ONLY on the above search results. If you see conflicting older knowledge, prefer the search results. Mention that the information is current as of ${todayStr}.`;
+            `\n\nIMPORTANT: Answer based ONLY on the search results above. Do NOT use training knowledge that may be outdated. If the results don't contain the answer, say so honestly. Today is ${todayStr}.`;
+        } else {
+          searchContext = `\n\n[Search Note]: Web search returned no results for "${searchQuery}". Answer based on what you know but clearly state your knowledge may be outdated.`;
         }
       } catch (e) {
         this.addLog('error', `Pre-emptive search failed.`);
       }
     }
+
 
     const messages: any[] = [
       { role: 'system', content: systemPrompt + searchContext },
