@@ -464,6 +464,16 @@ export class JarvisEngine {
     if (cmd.includes('when will edwin return') || cmd.includes('when is edwin coming back') || cmd.includes('when will edwin be back')) {
       return "I don't have access to Edwin's live schedule unless he has shared it with me.";
     }
+    // Play song — open YouTube Music on static page
+    const playMatch = cmd.match(/^(play|start playing|put on|play me)\s+(.+)/);
+    if (playMatch || cmd === 'play a song' || cmd === 'play music' || cmd === 'play something') {
+      const query = playMatch ? playMatch[2].trim() : 'top hits';
+      const ytUrl = `https://music.youtube.com/search?q=${encodeURIComponent(query)}`;
+      window.open(ytUrl, '_blank');
+      sounds.playSuccess();
+      this.addLog('action', `MEDIA: Opening YouTube Music for "${query}"`);
+      return `Opening YouTube Music for "${query}" now.`;
+    }
     return null;
   }
 
@@ -560,7 +570,7 @@ export class JarvisEngine {
       return q || raw;
     }
 
-    const searchQuery = extractSearchQuery(prompt);
+    const searchQuery = await this.generateSearchQuery(prompt, apiKey, modelName);
 
     if (isFollowUp && this.lastSearchContext) {
       // Reuse cached search context for follow-up questions
@@ -590,6 +600,57 @@ export class JarvisEngine {
         this.addLog('error', `Pre-emptive search failed.`);
       }
     }
+    const messages: any[] = [
+      { role: 'system', content: systemPrompt + searchContext },
+      ...this.chatHistory.map(h => ({ role: h.role, content: h.content })),
+      { role: 'user', content: prompt }
+    ];
+
+    await this._continueGroqQuery(prompt, systemPrompt, searchContext, apiKey, modelName);
+  }
+
+
+  private async generateSearchQuery(userMessage: string, apiKey: string, modelName: string): Promise<string> {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',  // Fast cheap model just for query gen
+          messages: [
+            {
+              role: 'system',
+              content: `You are a search query optimizer. Convert the user's message into the most effective web search query possible. Output ONLY the search query string — no explanation, no quotes, no punctuation at the end. Make it specific, include the current year ${new Date().getFullYear()} for time-sensitive topics like news, sports results, music charts, stock prices. Examples:
+- "who won fifa 2026" → "FIFA World Cup 2026 winner champion"
+- "latest song hits in india" → "Top Indian songs Bollywood chart ${new Date().getFullYear()}"
+- "chris evans latest songs" → "Chris Evans singer latest songs ${new Date().getFullYear()}"
+- "expand it" → keep last topic
+- "openai news" → "OpenAI latest news ${new Date().getFullYear()}"`,
+            },
+            { role: 'user', content: userMessage }
+          ],
+          max_tokens: 40,
+          temperature: 0.2
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const query = data.choices?.[0]?.message?.content?.trim();
+        if (query && query.length > 3) {
+          this.addLog('thought', `AI search query: "${query}"`);
+          return query;
+        }
+      }
+    } catch (e) {
+      // Silent fallback
+    }
+    // Fallback to regex-based extraction
+    return userMessage.replace(/^search\s+(for\s+|about\s+|the\s+)?/i, '').trim() || userMessage;
+  }
+
+  // Direct Client-side Groq query end — continuation of queryClientSideGroq
+  private async _continueGroqQuery(prompt: string, systemPrompt: string, searchContext: string, apiKey: string, modelName: string) {
     const messages: any[] = [
       { role: 'system', content: systemPrompt + searchContext },
       ...this.chatHistory.map(h => ({ role: h.role, content: h.content })),
