@@ -137,7 +137,8 @@ async function clientSideSearch(query: string, isNewsQuery = false): Promise<any
 
 export class JarvisEngine {
   private iot: IoTController | null = null;
-  private chatHistory: { role: 'user' | 'assistant'; content: string }[] = [];
+  private chatHistory: { role: 'user' | 'assistant' | 'system'; content: string }[] = [];
+  private lastSearchContext: string = '';  // Cache last search results for follow-up queries
   private config: EngineConfig = {
     backend: IS_GITHUB_PAGES_WITHOUT_API ? 'groq' : 'offline',
     ollamaUrl: 'http://localhost:11434',
@@ -536,11 +537,14 @@ export class JarvisEngine {
 
     let searchContext = '';
 
+    // Detect follow-up queries that refer to the previous search result
+    const isFollowUp = /^(expand|elaborate|more|tell me more|continue|go on|details|detail|explain|what else|and|also|furthermore|additionally|give me more|how|why|what happened|what about|so what|and then|after that|what does that mean)\b/i.test(prompt.trim());
+
     // Smart search trigger — catches: explicit "search X", sports/events results, current year queries, news
     const needsSearch =
       /^search\b/i.test(prompt.trim()) ||  // starts with "search ..."
       /\b(search|look up|look for|find out|google|browse|internet|web search)\b/i.test(prompt) ||
-      /\b(weather|stock|price|score|result|winner|champion|won|defeated|beat|beat|match|game|tournament|election|war|crisis|event|launch|release|announce)\b/i.test(prompt) ||
+      /\b(weather|stock|price|score|result|winner|champion|won|defeated|beat|match|game|tournament|election|war|crisis|event|launch|release|announce)\b/i.test(prompt) ||
       /\b(news|latest|recent|today|current|update|happening|breaking|just happened|right now)\b/i.test(prompt) ||
       /\b(20(24|25|26))\b/.test(prompt);  // queries mentioning current years
 
@@ -548,22 +552,21 @@ export class JarvisEngine {
 
     // Build a focused, clean search query (strips "search" prefix, adds context)
     function extractSearchQuery(raw: string): string {
-      // Strip leading "search" command word
       let q = raw.replace(/^search\s+(for\s+|about\s+|the\s+)?/i, '').trim();
-      // Strip "who won in YEAR" → add sport context from recent history if available
       if (/^who won/i.test(q) && !/\b(fifa|world cup|nba|nfl|cricket|tennis|olympic|championship)\b/i.test(q)) {
-        // Try to inject sport context from the raw year mention
         const yearMatch = q.match(/\b(20\d{2})\b/);
-        if (yearMatch) {
-          q = `${q} results ${yearMatch[1]}`;
-        }
+        if (yearMatch) q = `${q} results ${yearMatch[1]}`;
       }
       return q || raw;
     }
 
     const searchQuery = extractSearchQuery(prompt);
 
-    if (needsSearch) {
+    if (isFollowUp && this.lastSearchContext) {
+      // Reuse cached search context for follow-up questions
+      searchContext = this.lastSearchContext;
+      this.addLog('system', 'Using cached search context for follow-up query.');
+    } else if (needsSearch) {
       this.addLog('action', `Pre-emptively executing client-side web search...`);
       try {
         const results = await clientSideSearch(searchQuery, isNewsQuery);
@@ -575,15 +578,18 @@ export class JarvisEngine {
             `These are RECENT web results (last 7 days). Base your answer ONLY on these results:\n` +
             results.map((r, i) => `[${i+1}] ${r.title}${r.publishedDate ? ` (${r.publishedDate})` : ''}\n    URL: ${r.link}\n    Summary: ${r.snippet}`).join('\n\n') +
             `\n\nIMPORTANT: Answer based ONLY on the search results above. Do NOT use training knowledge that may be outdated. If the results don't contain the answer, say so honestly. Today is ${todayStr}.`;
+          // Cache search results for follow-up queries in this session
+          this.lastSearchContext = searchContext;
+          // Also store in chat history as a system message so context persists across turns
+          this.chatHistory.push({ role: 'system', content: `[Search Results for: "${searchQuery}"]\n${results.map((r, i) => `[${i+1}] ${r.title}: ${r.snippet}`).join('\n')}` });
         } else {
           searchContext = `\n\n[Search Note]: Web search returned no results for "${searchQuery}". Answer based on what you know but clearly state your knowledge may be outdated.`;
+          this.lastSearchContext = '';
         }
       } catch (e) {
         this.addLog('error', `Pre-emptive search failed.`);
       }
     }
-
-
     const messages: any[] = [
       { role: 'system', content: systemPrompt + searchContext },
       ...this.chatHistory.map(h => ({ role: h.role, content: h.content })),
@@ -617,8 +623,8 @@ export class JarvisEngine {
       // Save user and assistant messages to local history
       this.chatHistory.push({ role: 'user', content: prompt });
       this.chatHistory.push({ role: 'assistant', content: responseText });
-      if (this.chatHistory.length > 20) {
-        this.chatHistory = this.chatHistory.slice(-20);
+      if (this.chatHistory.length > 40) {
+        this.chatHistory = this.chatHistory.slice(-40);
       }
 
       sounds.playSuccess();
