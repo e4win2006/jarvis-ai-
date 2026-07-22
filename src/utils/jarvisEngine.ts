@@ -69,49 +69,64 @@ export const defaultTrackList = [
   { title: "Cyberpunk Resonance", artist: "Jarvis Core Synth", videoId: "gbcR5gZcK2U" }
 ];
 
-async function clientSideSearch(query: string, isNewsQuery = false): Promise<any[]> {
+// Tavily search return type
+interface SearchResult {
+  title: string;
+  link: string;
+  snippet: string;
+  publishedDate: string;
+}
+interface SearchResponse {
+  answer: string;   // Tavily direct AI answer (may be empty)
+  results: SearchResult[];
+}
+
+async function clientSideSearch(query: string, isNewsQuery = false): Promise<SearchResponse> {
+  // News/events: restrict to last 7 days. Factual queries: no restriction.
+  const useRecentFilter = isNewsQuery;
   try {
+    const payload: any = {
+      api_key: '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',
+      query,
+      search_depth: 'advanced',
+      max_results: 7,
+      include_answer: true,            // Get Tavily's own direct AI answer
+      ...(useRecentFilter ? { days: 7 } : { days: 30 }),  // News: 7 days, Factual: 30 days
+      ...(isNewsQuery ? { topic: 'news' } : {})            // News topic only for news
+    };
     const response = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: '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',
-        query,
-        search_depth: 'advanced',
-        max_results: 7,
-        days: 7,           // Only results from the last 7 days
-        ...(isNewsQuery ? { topic: 'news' } : {})  // Use news topic for news queries
-      })
+      body: JSON.stringify(payload)
     });
     if (response.ok) {
       const data = await response.json();
-      const results = (data.results || []).map((item: any) => ({
+      const results: SearchResult[] = (data.results || []).map((item: any) => ({
         title: item.title,
         link: item.url,
         snippet: item.content,
         publishedDate: item.published_date || ''
       }));
-      if (results.length > 0) {
-        return results;
+      const answer: string = data.answer || '';
+      if (results.length > 0 || answer) {
+        return { answer, results };
       }
     }
   } catch (e) {
-    console.warn("Client-side Tavily search failed, falling back to DuckDuckGo:", e);
+    console.warn('Client-side Tavily search failed, falling back to DuckDuckGo:', e);
   }
 
-  // Fallback to DuckDuckGo
+  // Fallback to DuckDuckGo via CORS proxy
   try {
     const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error();
     const html = await response.text();
-    
-    const results: any[] = [];
-    const resultBlockRegex = /<div class="result(?: results_links)?[\s\S]*?">([\ s\S]*?)(?=<div class="result|$)/g;
+    const results: SearchResult[] = [];
+    const resultBlockRegex = /<div class="result(?: results_links)?[\s\S]*?">([\s\S]*?)(?=<div class="result|$)/g;
     let match;
     let limit = 5;
-    
     while ((match = resultBlockRegex.exec(html)) !== null && limit > 0) {
       const block = match[1];
       const titleLinkMatch = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(block);
@@ -128,10 +143,10 @@ async function clientSideSearch(query: string, isNewsQuery = false): Promise<any
         limit--;
       }
     }
-    return results;
+    return { answer: '', results };
   } catch (e) {
-    console.error("Client-side search failed:", e);
-    return [];
+    console.error('Client-side search failed:', e);
+    return { answer: '', results: [] };
   }
 }
 
@@ -579,19 +594,18 @@ export class JarvisEngine {
     } else if (needsSearch) {
       this.addLog('action', `Pre-emptively executing client-side web search...`);
       try {
-        const results = await clientSideSearch(searchQuery, isNewsQuery);
-        this.addLog('system', `Search retrieved ${results.length} items for: "${searchQuery}"`);
-        if (results && results.length > 0) {
+        const { answer, results } = await clientSideSearch(searchQuery, isNewsQuery);
+        this.addLog('system', `Search retrieved ${results.length} results for: "${searchQuery}"${answer ? ' + direct answer' : ''}`);
+        if (answer || results.length > 0) {
           const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
           searchContext = `\n\n[Internet Search Context — as of ${todayStr}]\n` +
-            `Search query used: "${searchQuery}"\n` +
-            `These are RECENT web results (last 7 days). Base your answer ONLY on these results:\n` +
-            results.map((r, i) => `[${i+1}] ${r.title}${r.publishedDate ? ` (${r.publishedDate})` : ''}\n    URL: ${r.link}\n    Summary: ${r.snippet}`).join('\n\n') +
-            `\n\nIMPORTANT: Answer based ONLY on the search results above. Do NOT use training knowledge that may be outdated. If the results don't contain the answer, say so honestly. Today is ${todayStr}.`;
-          // Cache search results for follow-up queries in this session
+            `Search query: "${searchQuery}"\n` +
+            (answer ? `[Direct Answer from Search]: ${answer}\n\n` : '') +
+            (results.length > 0 ? `[Supporting Sources]:\n` +
+              results.map((r, i) => `[${i+1}] ${r.title}${r.publishedDate ? ` (${r.publishedDate})` : ''}\n    URL: ${r.link}\n    Summary: ${r.snippet}`).join('\n\n') : '') +
+            `\n\nINSTRUCTIONS: Use the [Direct Answer] and [Supporting Sources] above to respond. Do NOT rely on pre-training knowledge. If the information isn't in the search results, say so clearly. Today is ${todayStr}.`;
           this.lastSearchContext = searchContext;
-          // Also store in chat history as a system message so context persists across turns
-          this.chatHistory.push({ role: 'system', content: `[Search Results for: "${searchQuery}"]\n${results.map((r, i) => `[${i+1}] ${r.title}: ${r.snippet}`).join('\n')}` });
+          this.chatHistory.push({ role: 'system', content: `[Search for "${searchQuery}"] Answer: ${answer || 'N/A'}\nSources: ${results.map((r, i) => `[${i+1}] ${r.title}: ${r.snippet}`).join(' | ')}` });
         } else {
           searchContext = `\n\n[Search Note]: Web search returned no results for "${searchQuery}". Answer based on what you know but clearly state your knowledge may be outdated.`;
           this.lastSearchContext = '';
@@ -600,12 +614,6 @@ export class JarvisEngine {
         this.addLog('error', `Pre-emptive search failed.`);
       }
     }
-    const messages: any[] = [
-      { role: 'system', content: systemPrompt + searchContext },
-      ...this.chatHistory.map(h => ({ role: h.role, content: h.content })),
-      { role: 'user', content: prompt }
-    ];
-
     await this._continueGroqQuery(prompt, systemPrompt, searchContext, apiKey, modelName);
   }
 
