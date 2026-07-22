@@ -69,7 +69,7 @@ export const defaultTrackList = [
   { title: "Cyberpunk Resonance", artist: "Jarvis Core Synth", videoId: "gbcR5gZcK2U" }
 ];
 
-async function clientSideSearch(query: string): Promise<any[]> {
+async function clientSideSearch(query: string, isNewsQuery = false): Promise<any[]> {
   try {
     const response = await fetch('https://api.tavily.com/search', {
       method: 'POST',
@@ -77,8 +77,10 @@ async function clientSideSearch(query: string): Promise<any[]> {
       body: JSON.stringify({
         api_key: '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',
         query,
-        search_depth: 'basic',
-        max_results: 5
+        search_depth: 'advanced',
+        max_results: 7,
+        days: 7,           // Only results from the last 7 days
+        ...(isNewsQuery ? { topic: 'news' } : {})  // Use news topic for news queries
       })
     });
     if (response.ok) {
@@ -86,7 +88,8 @@ async function clientSideSearch(query: string): Promise<any[]> {
       const results = (data.results || []).map((item: any) => ({
         title: item.title,
         link: item.url,
-        snippet: item.content
+        snippet: item.content,
+        publishedDate: item.published_date || ''
       }));
       if (results.length > 0) {
         return results;
@@ -105,9 +108,9 @@ async function clientSideSearch(query: string): Promise<any[]> {
     const html = await response.text();
     
     const results: any[] = [];
-    const resultBlockRegex = /<div class="result(?: results_links)?[\s\S]*?">([\s\S]*?)(?=<div class="result|$)/g;
+    const resultBlockRegex = /<div class="result(?: results_links)?[\s\S]*?">([\ s\S]*?)(?=<div class="result|$)/g;
     let match;
-    let limit = 4;
+    let limit = 5;
     
     while ((match = resultBlockRegex.exec(html)) !== null && limit > 0) {
       const block = match[1];
@@ -121,7 +124,7 @@ async function clientSideSearch(query: string): Promise<any[]> {
           : rawLink.replace(/^\/\//, 'https://');
         const title = titleLinkMatch[2].replace(/<[^>]*>/g, '').trim();
         const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]*>/g, '').trim() : '';
-        results.push({ title, link, snippet });
+        results.push({ title, link, snippet, publishedDate: '' });
         limit--;
       }
     }
@@ -532,16 +535,19 @@ export class JarvisEngine {
     const systemPrompt = getClientSystemPrompt(displayName, role);
 
     let searchContext = '';
-    const needsSearch = /\b(search|look up|weather|news|stock|google|ddg|duckduckgo|internet)\b/i.test(prompt);
+    const needsSearch = /\b(search|look up|weather|news|stock|google|ddg|duckduckgo|internet|latest|recent|today|current|update|happening)\b/i.test(prompt);
+    const isNewsQuery = /\b(news|latest|recent|today|current|update|happening|announce|release)\b/i.test(prompt);
     if (needsSearch) {
       this.addLog('action', `Pre-emptively executing client-side web search...`);
       try {
-        const results = await clientSideSearch(prompt);
+        const results = await clientSideSearch(prompt, isNewsQuery);
         this.addLog('system', `Search retrieved ${results.length} items.`);
         if (results && results.length > 0) {
-          searchContext = `\n\n[Internet Search Context]\nHere are the top web search results for "${prompt}":\n` + 
-            results.map((r, i) => `[${i+1}] ${r.title} - ${r.link}\nSnippet: ${r.snippet}`).join('\n\n') +
-            `\nUse the search results to formulate a precise answer.`;
+          const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+          searchContext = `\n\n[Internet Search Context — as of ${todayStr}]\n` +
+            `These are RECENT web results (last 7 days). Only use this information — do NOT use older knowledge for this topic:\n` +
+            results.map((r, i) => `[${i+1}] ${r.title}${r.publishedDate ? ` (${r.publishedDate})` : ''}\n    URL: ${r.link}\n    Summary: ${r.snippet}`).join('\n\n') +
+            `\n\nIMPORTANT: Base your answer ONLY on the above search results. If you see conflicting older knowledge, prefer the search results. Mention that the information is current as of ${todayStr}.`;
         }
       } catch (e) {
         this.addLog('error', `Pre-emptive search failed.`);
