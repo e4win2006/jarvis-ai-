@@ -37,7 +37,18 @@ export default function App() {
     }
   ]);
   const [input, setInput] = useState('');
-  const [engineConfig, setEngineConfig] = useState<EngineConfig>(jarvisEngine.getConfig());
+  // ── FIX: Pre-hydrate from localStorage so backend pill shows immediately on load ──
+  const [engineConfig, setEngineConfig] = useState<EngineConfig>(() => {
+    const saved = localStorage.getItem('jarvis_config');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        jarvisEngine.updateConfig(parsed);
+      } catch {}
+    }
+    return jarvisEngine.getConfig();
+  });
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [showDevices, setShowDevices] = useState(false);
@@ -55,17 +66,7 @@ export default function App() {
       addMessage('system', 'GitHub Pages is static hosting. Connect VITE_API_BASE to a deployed JARVIS API server before using online AI.');
     }
 
-    const saved = localStorage.getItem('jarvis_config');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        jarvisEngine.updateConfig(parsed);
-        setEngineConfig(jarvisEngine.getConfig());
-      } catch (e) {
-        console.warn('Failed to parse cached config:', e);
-      }
-    }
-
+    // Fetch live config from backend (localStorage already pre-hydrated at useState init)
     fetch(`${API_BASE}/api/config`)
       .then(res => res.json())
       .then(data => {
@@ -85,7 +86,8 @@ export default function App() {
           setEngineConfig(jarvisEngine.getConfig());
           localStorage.setItem('jarvis_config', JSON.stringify(jarvisEngine.getConfig()));
         }
-      }).catch(() => {});
+        setConfigLoaded(true);
+      }).catch(() => { setConfigLoaded(true); });
 
     // Register engine callbacks
     jarvisEngine.registerCallbacks(
@@ -247,8 +249,12 @@ export default function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className={`pill ${isOnline ? 'online' : 'offline'}`}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: isOnline ? 'var(--green)' : 'var(--text-3)', flexShrink: 0 }} />
+          <span className={`pill ${isOnline ? 'online' : 'offline'}`} title={configLoaded ? 'Backend connected' : 'Loading config…'}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+              background: !configLoaded ? 'var(--amber)' : isOnline ? 'var(--green)' : 'var(--text-3)',
+              animation: !configLoaded ? 'orb-breathe 1s ease-in-out infinite' : 'none'
+            }} />
             {engineConfig.backend.toUpperCase()}
           </span>
 

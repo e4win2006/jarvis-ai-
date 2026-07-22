@@ -75,7 +75,7 @@ async function clientSideSearch(query: string): Promise<any[]> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        api_key: 'sk-2c7546c9dda542308baba01e62766ade',
+        api_key: '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',
         query,
         search_depth: 'basic',
         max_results: 5
