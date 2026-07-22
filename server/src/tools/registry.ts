@@ -30,12 +30,27 @@ const PYTHON_DIR = path.join(__dirname, 'python_tools');
 // System tool handlers mapping
 const handlers: Record<string, (args: any) => Promise<any>> = {
   internet_search: async (args: { query: string; provider?: string }) => {
-    const script = path.join(PYTHON_DIR, 'search.py');
-    const result = await runPythonScript(script, [
-      '--query', args.query,
-      '--provider', args.provider || 'auto'
-    ]);
-    return result;
+    try {
+      const script = path.join(PYTHON_DIR, 'search.py');
+      const result = await runPythonScript(script, [
+        '--query', args.query,
+        '--provider', args.provider || 'auto'
+      ]);
+      return result;
+    } catch (e) {
+      console.warn("Python internet_search failed, falling back to pure Node.js search:", e);
+      const results = await SearchHelper.search(args.query);
+      return JSON.stringify(results);
+    }
+  },
+
+  web_search: async (args: { query: string }) => {
+    try {
+      const results = await SearchHelper.search(args.query);
+      return JSON.stringify(results);
+    } catch (e: any) {
+      return JSON.stringify({ success: false, error: e.message || e });
+    }
   },
   
   browser_automation: async (args: { url: string; action: 'extract' | 'screenshot' | 'click' | 'fill'; selector?: string; textToFill?: string }) => {
@@ -177,6 +192,20 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
 
 // System declarations
 const systemDeclarations: ToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: 'Perform a web search for the given query to retrieve live information, websites, and summaries from the internet.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search term or question.' }
+        },
+        required: ['query']
+      }
+    }
+  },
   {
     type: 'function',
     function: {
@@ -416,7 +445,7 @@ export const ToolRegistry = {
       }
     } else {
       // Non-owner roles only get safe public information tools
-      const allowedNames = ['internet_search', 'play_song', 'manage_scheduler', 'remember_info', 'recall_info', 'get_weather', 'get_news', 'get_stocks'];
+      const allowedNames = ['internet_search', 'web_search', 'play_song', 'manage_scheduler', 'remember_info', 'recall_info', 'get_weather', 'get_news', 'get_stocks'];
       list = systemDeclarations.filter(t => allowedNames.includes(t.function.name));
     }
 
@@ -427,7 +456,7 @@ export const ToolRegistry = {
     try {
       // Restrict tool execution by role
       if (role !== 'OWNER') {
-        const allowedNames = ['internet_search', 'play_song', 'manage_scheduler', 'remember_info', 'recall_info', 'get_weather', 'get_news', 'get_stocks'];
+        const allowedNames = ['internet_search', 'web_search', 'play_song', 'manage_scheduler', 'remember_info', 'recall_info', 'get_weather', 'get_news', 'get_stocks'];
         if (!allowedNames.includes(name)) {
           return JSON.stringify({ success: false, error: `Access Denied: Tool '${name}' requires OWNER permissions, but you are authorized as ${role}.` });
         }
