@@ -160,6 +160,14 @@ export class JarvisEngine {
       return;
     }
 
+    // Step 2: Check direct client-side intents
+    const directReply = this.tryParseClientIntent(cmd);
+    if (directReply) {
+      sounds.playSuccess();
+      this.speakResponse(directReply);
+      return;
+    }
+
     // Step 2: Fallback to selected LLM Backend
     if (this.config.backend === 'offline') {
       this.addLog('thought', 'Offline engine selected. Executing fallback...');
@@ -377,6 +385,19 @@ export class JarvisEngine {
     }
 
     return null; // Not an IoT command
+  }
+
+  private tryParseClientIntent(cmd: string): string | null {
+    if (cmd === 'hi' || cmd === 'hello' || cmd === 'hey') {
+      return "Greetings. All core systems are operational and attentive to your directive.";
+    }
+    if (cmd.includes('who created you') || cmd.includes('who made you') || cmd.includes('your creator')) {
+      return "I am JARVIS, Edwin's personal AI assistant.";
+    }
+    if (cmd.includes('when will edwin return') || cmd.includes('when is edwin coming back') || cmd.includes('when will edwin be back')) {
+      return "I don't have access to Edwin's live schedule unless he has shared it with me.";
+    }
+    return null;
   }
 
   // LLM Query: Local Backend Coordinator
