@@ -14,6 +14,7 @@ export function SignInPage({ onSignedIn }: SignInPageProps) {
   const [mode, setMode] = useState<'signin' | 'request' | 'owner' | 'chooser'>('signin');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('edwintomjoseph41@gmail.com');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [isBusy, setIsBusy] = useState(false);
@@ -29,6 +30,7 @@ export function SignInPage({ onSignedIn }: SignInPageProps) {
         }
         setUsername('');
         setDisplayName('');
+        setEmail('edwintomjoseph41@gmail.com');
       } else {
         setMode('signin');
       }
@@ -52,10 +54,10 @@ export function SignInPage({ onSignedIn }: SignInPageProps) {
 
     try {
       if (mode === 'owner') {
-        const session = await createOwner(username, displayName, password);
+        const session = await createOwner(username, displayName, password, email);
         onSignedIn(session);
       } else if (mode === 'request') {
-        await requestAccess(username, displayName, password);
+        await requestAccess(username, displayName, password, email);
         setMessage('Access request saved. The owner must approve it from the admin dashboard.');
         setMode('signin');
       } else {
@@ -130,20 +132,22 @@ export function SignInPage({ onSignedIn }: SignInPageProps) {
         <h1>{title}</h1>
         <p className="auth-copy">
           {mode === 'signin'
-            ? 'Authorized users only. JARVIS remains locked until a permitted account signs in.'
+            ? 'Authorized users only. Sign in using your username or email address.'
             : mode === 'request'
               ? 'Create a user request for the owner to approve.'
               : 'Set up the primary system owner account. Keep this password private.'}
         </p>
 
-        <label className="auth-label" htmlFor="username">Username</label>
+        <label className="auth-label" htmlFor="username">
+          {mode === 'signin' ? 'Username or Email Address' : 'Username'}
+        </label>
         <input
           id="username"
           className="auth-input"
           value={username}
           onChange={event => setUsername(event.target.value)}
           autoComplete="username"
-          placeholder={mode === 'owner' ? "Choose username (e.g. admin)" : "Enter username"}
+          placeholder={mode === 'owner' ? "Choose username (e.g. admin)" : mode === 'signin' ? "Enter username or email address" : "Enter username"}
           required
         />
 
@@ -156,7 +160,19 @@ export function SignInPage({ onSignedIn }: SignInPageProps) {
               value={displayName}
               onChange={event => setDisplayName(event.target.value)}
               autoComplete="name"
-              placeholder={mode === 'owner' ? "Your Name (e.g. John Doe)" : "Your Name"}
+              placeholder={mode === 'owner' ? "Your Name (e.g. Edwin Tom Joseph)" : "Your Name"}
+              required
+            />
+
+            <label className="auth-label" htmlFor="email">Email Address</label>
+            <input
+              id="email"
+              className="auth-input"
+              type="email"
+              value={email}
+              onChange={event => setEmail(event.target.value)}
+              autoComplete="email"
+              placeholder="edwintomjoseph41@gmail.com"
               required
             />
           </>

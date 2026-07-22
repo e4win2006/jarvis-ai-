@@ -427,7 +427,7 @@ async function queryGemini(prompt: string, history: any[], tools: any[], systemP
 }
 
 async function queryGroq(prompt: string, history: any[], tools: any[], systemPrompt: string): Promise<any> {
-  const apiKey = SettingsDb.get('groq_key', process.env.GROQ_API_KEY || 'tpb7ESEeCzOlzCBItyYunn2hYF3bydGW76qY4mD8H8LI014gm0Ta_ksg'.split('').reverse().join(''));
+  const apiKey = SettingsDb.get('groq_key', process.env.GROQ_API_KEY || '');
   const modelName = SettingsDb.get('groq_model', process.env.GROQ_MODEL || 'llama-3.3-70b-versatile');
 
   if (!apiKey) {

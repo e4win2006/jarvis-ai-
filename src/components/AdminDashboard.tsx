@@ -210,7 +210,7 @@ export function AdminDashboard({ currentUsername, onClose }: AdminDashboardProps
                         )}
                       </div>
                       <p className="text-xs text-slate-400 font-mono">
-                        {user.username} · {user.role === 'owner' ? 'Owner' : user.allowed ? 'Allowed user' : 'Pending user'}
+                        {user.username} {user.email ? `(${user.email})` : ''} · {user.role === 'owner' ? 'Owner' : user.allowed ? 'Allowed user' : 'Pending user'}
                       </p>
                     </div>
                     <div className="admin-actions flex items-center gap-1.5">

@@ -8,6 +8,7 @@ export interface JarvisUser {
   role: JarvisRole;
   allowed: boolean;
   passwordHash: string;
+  email?: string;
   isOnline?: boolean;
 }
 
@@ -15,6 +16,7 @@ export interface JarvisSession {
   username: string;
   displayName: string;
   role: JarvisRole;
+  email?: string;
 }
 
 const USERS_KEY = 'jarvis_allowed_users';
@@ -74,9 +76,10 @@ export function signOut() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-export async function createOwner(username: string, displayName: string, password: string): Promise<JarvisSession> {
+export async function createOwner(username: string, displayName: string, password: string, email?: string): Promise<JarvisSession> {
   const cleanUsername = username.trim().toLowerCase();
   const cleanName = displayName.trim() || username.trim();
+  const cleanEmail = (email || 'edwintomjoseph41@gmail.com').trim().toLowerCase();
   const passwordHash = await sha256(password);
 
   if (IS_GITHUB_PAGES_WITHOUT_API) {
@@ -85,10 +88,11 @@ export async function createOwner(username: string, displayName: string, passwor
       displayName: cleanName,
       role: 'owner',
       allowed: true,
-      passwordHash
+      passwordHash,
+      email: cleanEmail
     };
     saveLocalUsers([user]);
-    const session = { username: user.username, displayName: user.displayName, role: user.role };
+    const session = { username: user.username, displayName: user.displayName, role: user.role, email: user.email };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     return session;
   }
@@ -96,7 +100,7 @@ export async function createOwner(username: string, displayName: string, passwor
   const res = await fetch(`${API_BASE}/api/auth/create-owner`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: cleanUsername, displayName: cleanName, passwordHash })
+    body: JSON.stringify({ username: cleanUsername, displayName: cleanName, passwordHash, email: cleanEmail })
   });
 
   if (!res.ok) {
@@ -105,24 +109,24 @@ export async function createOwner(username: string, displayName: string, passwor
   }
 
   const user = await res.json();
-  const session = { username: user.username, displayName: user.displayName, role: user.role };
+  const session = { username: user.username, displayName: user.displayName, role: user.role, email: user.email || cleanEmail };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   return session;
 }
 
-export async function signIn(username: string, password: string): Promise<JarvisSession> {
-  const cleanUsername = username.trim().toLowerCase();
+export async function signIn(usernameOrEmail: string, password: string): Promise<JarvisSession> {
+  const cleanInput = usernameOrEmail.trim().toLowerCase();
   const passwordHash = await sha256(password);
 
   if (IS_GITHUB_PAGES_WITHOUT_API) {
-    const user = getLocalUsers().find(candidate => candidate.username === cleanUsername);
+    const user = getLocalUsers().find(candidate => candidate.username === cleanInput || candidate.email?.toLowerCase() === cleanInput);
     if (!user || user.passwordHash !== passwordHash) {
-      throw new Error('Invalid username or password.');
+      throw new Error('Invalid username/email or password.');
     }
     if (!user.allowed) {
       throw new Error('This account is waiting for owner approval.');
     }
-    const session = { username: user.username, displayName: user.displayName, role: user.role };
+    const session = { username: user.username, displayName: user.displayName, role: user.role, email: user.email || (user.role === 'owner' ? 'edwintomjoseph41@gmail.com' : '') };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     return session;
   }
@@ -130,7 +134,7 @@ export async function signIn(username: string, password: string): Promise<Jarvis
   const res = await fetch(`${API_BASE}/api/auth/signin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: cleanUsername, passwordHash })
+    body: JSON.stringify({ username: cleanInput, passwordHash })
   });
 
   if (!res.ok) {
@@ -139,26 +143,28 @@ export async function signIn(username: string, password: string): Promise<Jarvis
   }
 
   const user = await res.json();
-  const session = { username: user.username, displayName: user.displayName, role: user.role };
+  const session = { username: user.username, displayName: user.displayName, role: user.role, email: user.email };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   return session;
 }
 
-export async function requestAccess(username: string, displayName: string, password: string): Promise<void> {
+export async function requestAccess(username: string, displayName: string, password: string, email?: string): Promise<void> {
   const cleanUsername = username.trim().toLowerCase();
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
   const passwordHash = await sha256(password);
 
   if (IS_GITHUB_PAGES_WITHOUT_API) {
     const users = getLocalUsers();
-    if (users.some(user => user.username === cleanUsername)) {
-      throw new Error('That username already exists.');
+    if (users.some(user => user.username === cleanUsername || (cleanEmail && user.email?.toLowerCase() === cleanEmail))) {
+      throw new Error('That username or email is already registered.');
     }
     users.push({
       username: cleanUsername,
       displayName: displayName.trim() || username.trim(),
       role: 'user',
       allowed: false,
-      passwordHash
+      passwordHash,
+      email: cleanEmail
     });
     saveLocalUsers(users);
     return;
@@ -167,7 +173,7 @@ export async function requestAccess(username: string, displayName: string, passw
   const res = await fetch(`${API_BASE}/api/auth/request-access`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: cleanUsername, displayName, passwordHash })
+    body: JSON.stringify({ username: cleanUsername, displayName, passwordHash, email: cleanEmail })
   });
 
   if (!res.ok) {

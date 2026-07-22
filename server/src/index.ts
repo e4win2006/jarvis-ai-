@@ -90,7 +90,7 @@ app.get('/api/config', (req, res) => {
     ollama_model: SettingsDb.get('ollama_model', 'llama3'),
     lmstudio_url: SettingsDb.get('lmstudio_url', DEFAULT_LMSTUDIO_URL),
     gemini_key: SettingsDb.get('gemini_key', ''),
-    groq_key: SettingsDb.get('groq_key', process.env.GROQ_API_KEY || 'tpb7ESEeCzOlzCBItyYunn2hYF3bydGW76qY4mD8H8LI014gm0Ta_ksg'.split('').reverse().join('')),
+    groq_key: SettingsDb.get('groq_key', process.env.GROQ_API_KEY || ''),
     groq_model: SettingsDb.get('groq_model', process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'),
     custom_api_url: SettingsDb.get('custom_api_url', 'http://192.168.56.1:1234/v1'),
     custom_api_key: SettingsDb.get('custom_api_key', ''),
@@ -195,11 +195,12 @@ app.get('/api/auth/has-owner', (req, res) => {
 });
 
 app.post('/api/auth/create-owner', (req, res) => {
-  const { username, displayName, passwordHash } = req.body;
+  const { username, displayName, passwordHash, email } = req.body;
   if (!username || !passwordHash) {
     return res.status(400).json({ error: 'Username and password hash are required.' });
   }
   const cleanUsername = username.trim().toLowerCase();
+  const cleanEmail = (email || 'edwintomjoseph41@gmail.com').trim().toLowerCase();
   
   try {
     const ownerCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'owner'").get() as { count: number };
@@ -207,10 +208,10 @@ app.post('/api/auth/create-owner', (req, res) => {
       return res.status(400).json({ error: 'An owner already exists on this system.' });
     }
 
-    db.prepare("INSERT INTO users (username, displayName, role, allowed, passwordHash) VALUES (?, ?, 'owner', 1, ?)")
-      .run(cleanUsername, displayName || username, passwordHash);
+    db.prepare("INSERT INTO users (username, displayName, role, allowed, passwordHash, email) VALUES (?, ?, 'owner', 1, ?, ?)")
+      .run(cleanUsername, displayName || username, passwordHash, cleanEmail);
 
-    res.json({ username: cleanUsername, displayName: displayName || username, role: 'owner' });
+    res.json({ username: cleanUsername, displayName: displayName || username, role: 'owner', email: cleanEmail });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -219,39 +220,40 @@ app.post('/api/auth/create-owner', (req, res) => {
 app.post('/api/auth/signin', (req, res) => {
   const { username, passwordHash } = req.body;
   if (!username || !passwordHash) {
-    return res.status(400).json({ error: 'Username and password hash are required.' });
+    return res.status(400).json({ error: 'Username or email and password hash are required.' });
   }
-  const cleanUsername = username.trim().toLowerCase();
+  const cleanInput = username.trim().toLowerCase();
 
   try {
-    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(cleanUsername) as any;
+    const user = db.prepare("SELECT * FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?").get(cleanInput, cleanInput) as any;
     if (!user || user.passwordHash !== passwordHash) {
-      return res.status(400).json({ error: 'Invalid username or password.' });
+      return res.status(400).json({ error: 'Invalid username/email or password.' });
     }
     if (user.allowed !== 1) {
       return res.status(400).json({ error: 'This account is waiting for owner approval.' });
     }
-    res.json({ username: user.username, displayName: user.displayName, role: user.role });
+    res.json({ username: user.username, displayName: user.displayName, role: user.role, email: user.email || 'edwintomjoseph41@gmail.com' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/api/auth/request-access', (req, res) => {
-  const { username, displayName, passwordHash } = req.body;
+  const { username, displayName, passwordHash, email } = req.body;
   if (!username || !passwordHash) {
     return res.status(400).json({ error: 'Username and password hash are required.' });
   }
   const cleanUsername = username.trim().toLowerCase();
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
 
   try {
-    const existing = db.prepare("SELECT username FROM users WHERE username = ?").get(cleanUsername);
+    const existing = db.prepare("SELECT username FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND email != '' AND LOWER(email) = ?)").get(cleanUsername, cleanEmail);
     if (existing) {
-      return res.status(400).json({ error: 'That username already exists.' });
+      return res.status(400).json({ error: 'That username or email is already registered.' });
     }
 
-    db.prepare("INSERT INTO users (username, displayName, role, allowed, passwordHash) VALUES (?, ?, 'user', 0, ?)")
-      .run(cleanUsername, displayName || username, passwordHash);
+    db.prepare("INSERT INTO users (username, displayName, role, allowed, passwordHash, email) VALUES (?, ?, 'user', 0, ?, ?)")
+      .run(cleanUsername, displayName || username, passwordHash, cleanEmail);
 
     res.json({ success: true });
   } catch (err: any) {
@@ -262,7 +264,7 @@ app.post('/api/auth/request-access', (req, res) => {
 // Admin helper function to verify owner permission
 function isRequestFromOwner(caller: string): boolean {
   if (!caller) return false;
-  const user = db.prepare("SELECT role, allowed FROM users WHERE username = ?").get(caller.trim().toLowerCase()) as any;
+  const user = db.prepare("SELECT role, allowed FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?").get(caller.trim().toLowerCase(), caller.trim().toLowerCase()) as any;
   return user && user.role === 'owner' && user.allowed === 1;
 }
 
@@ -273,12 +275,13 @@ app.get('/api/auth/users', (req, res) => {
   }
 
   try {
-    const users = db.prepare("SELECT username, displayName, role, allowed FROM users").all();
+    const users = db.prepare("SELECT username, displayName, role, allowed, email FROM users").all();
     const onlineUsernames = Array.from(activeSessions.values());
     res.json(users.map((u: any) => ({
       username: u.username,
       displayName: u.displayName,
       role: u.role,
+      email: u.email || (u.role === 'owner' ? 'edwintomjoseph41@gmail.com' : ''),
       allowed: u.allowed === 1,
       isOnline: onlineUsernames.includes(u.username.toLowerCase())
     })));

@@ -80,7 +80,8 @@ db.exec(`
     displayName TEXT,
     role TEXT,
     allowed INTEGER,
-    passwordHash TEXT
+    passwordHash TEXT,
+    email TEXT
   );
 `);
 
@@ -94,6 +95,21 @@ try {
     console.error("Migration error adding session_id column:", err);
   }
 }
+
+try {
+  db.prepare("SELECT email FROM users LIMIT 1").get();
+} catch {
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN email TEXT");
+  } catch (err) {
+    console.error("Migration error adding email column:", err);
+  }
+}
+
+// Backfill default owner email if missing
+try {
+  db.prepare("UPDATE users SET email = 'edwintomjoseph41@gmail.com' WHERE role = 'owner' AND (email IS NULL OR email = '')").run();
+} catch {}
 
 import { isSensitiveKey, encryptSecret, decryptSecret } from '../utils/crypto';
 
