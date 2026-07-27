@@ -106,9 +106,18 @@ try {
   }
 }
 
-// Backfill default owner email if missing
+// Backfill default owner email or seed fresh owner if table is empty
 try {
-  db.prepare("UPDATE users SET email = 'edwintomjoseph41@gmail.com' WHERE role = 'owner' AND (email IS NULL OR email = '')").run();
+  const count = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
+  if (count.count === 0) {
+    db.prepare(`
+      INSERT INTO users (username, displayName, role, allowed, passwordHash, email)
+      VALUES ('edwin', 'Edwin Tom Joseph', 'owner', 1, '98b4353e1389ee1c2bcfca0389411c28027ffdf2cd78a972f6bcb2a46020ae60', 'edwintomjoseph41@gmail.com')
+    `).run();
+    console.log('[Database] Initialized default owner user: edwin');
+  } else {
+    db.prepare("UPDATE users SET email = 'edwintomjoseph41@gmail.com' WHERE role = 'owner' AND (email IS NULL OR email = '')").run();
+  }
 } catch {}
 
 import { isSensitiveKey, encryptSecret, decryptSecret } from '../utils/crypto';
