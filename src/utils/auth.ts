@@ -29,15 +29,29 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+const DEFAULT_OWNER_USER: JarvisUser = {
+  username: 'edwin',
+  displayName: 'Edwin Tom Joseph',
+  role: 'owner',
+  allowed: true,
+  passwordHash: '98b4353e1389ee1c2bcfca0389411c28027ffdf2cd78a972f6bcb2a46020ae60',
+  email: 'edwintomjoseph41@gmail.com'
+};
+
 // Local storage helpers used for static fallback
 export function getLocalUsers(): JarvisUser[] {
   const raw = localStorage.getItem(USERS_KEY);
-  if (!raw) return [];
+  if (!raw) {
+    localStorage.setItem(USERS_KEY, JSON.stringify([DEFAULT_OWNER_USER]));
+    return [DEFAULT_OWNER_USER];
+  }
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    localStorage.setItem(USERS_KEY, JSON.stringify([DEFAULT_OWNER_USER]));
+    return [DEFAULT_OWNER_USER];
   } catch {
-    return [];
+    return [DEFAULT_OWNER_USER];
   }
 }
 
