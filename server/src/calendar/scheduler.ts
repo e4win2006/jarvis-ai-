@@ -1,6 +1,7 @@
 import db, { SettingsDb } from '../memory/db';
 import { DesktopHelper } from '../automation/desktop';
 import nodemailer from 'nodemailer';
+import { AssignmentsManager } from '../assignments/assignmentsManager';
 
 // Initialize scheduler table
 db.exec(`
@@ -68,9 +69,14 @@ export const Scheduler = {
   }
 };
 
+let autoSolveTickCounter = 0;
 // Start Tick Checker background runner
 setInterval(() => {
   Scheduler.tickCheck();
+  autoSolveTickCounter++;
+  if (autoSolveTickCounter % 10 === 0) {
+    AssignmentsManager.checkAutoSolve().catch(() => {});
+  }
 }, 1000);
 
 // Email Integration

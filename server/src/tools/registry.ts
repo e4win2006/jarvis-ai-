@@ -7,6 +7,7 @@ import { EmailSender } from '../calendar/scheduler';
 import { LongTermMemory } from '../memory/vectorDb';
 import { MCPManager } from '../mcp/client';
 import { WhatsAppService } from '../automation/whatsapp';
+import { AssignmentsManager } from '../assignments/assignmentsManager';
 import { runPythonScript } from '../utils/pythonRunner';
 import { getDataPath } from '../utils/appPaths';
 import path from 'path';
@@ -187,11 +188,58 @@ const handlers: Record<string, (args: any) => Promise<any>> = {
 
   send_whatsapp_message: async (args: { to: string; message: string }) => {
     return await WhatsAppService.sendMessage(args.to, args.message);
+  },
+
+  manage_assignments: async (args: { action: 'add' | 'list' | 'do_now' | 'delete' | 'get'; id?: number; title?: string; subject?: string; description?: string; dueDate?: string; autoDo?: boolean }) => {
+    if (args.action === 'list') {
+      const list = AssignmentsManager.getAll();
+      return JSON.stringify({ success: true, count: list.length, assignments: list });
+    } else if (args.action === 'add') {
+      if (!args.title) return JSON.stringify({ success: false, reason: 'Title is required to add an assignment.' });
+      const item = AssignmentsManager.add(args.title, args.subject || 'General', args.description || '', args.dueDate || '', args.autoDo !== false);
+      return JSON.stringify({ success: true, message: `Assignment "${item.title}" added successfully with ID #${item.id}.`, item });
+    } else if (args.action === 'do_now') {
+      if (!args.id) return JSON.stringify({ success: false, reason: 'Assignment ID is required to solve an assignment.' });
+      const item = AssignmentsManager.getById(args.id);
+      if (!item) return JSON.stringify({ success: false, reason: `Assignment #${args.id} not found.` });
+      // Solve asynchronously
+      AssignmentsManager.solveAssignment(args.id).catch(() => {});
+      return JSON.stringify({ success: true, message: `JARVIS has started solving assignment #${args.id} ("${item.title}") on your behalf.` });
+    } else if (args.action === 'delete') {
+      if (!args.id) return JSON.stringify({ success: false, reason: 'Assignment ID is required to delete.' });
+      const success = AssignmentsManager.delete(args.id);
+      return JSON.stringify({ success, message: success ? `Assignment #${args.id} deleted.` : `Assignment #${args.id} not found.` });
+    } else if (args.action === 'get') {
+      if (!args.id) return JSON.stringify({ success: false, reason: 'Assignment ID is required.' });
+      const item = AssignmentsManager.getById(args.id);
+      return JSON.stringify({ success: !!item, assignment: item });
+    }
+    return JSON.stringify({ success: false, reason: 'Invalid assignment action.' });
   }
 };
 
 // System declarations
 const systemDeclarations: ToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'manage_assignments',
+      description: 'Manage and solve user assignments and due dates on behalf of the user. Actions include adding assignments, listing pending assignments, triggering automated resolution ("do_now"), or deleting assignments.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['add', 'list', 'do_now', 'delete', 'get'], description: 'The operation action to perform.' },
+          id: { type: 'number', description: 'The target assignment ID (required for do_now, delete, get).' },
+          title: { type: 'string', description: 'Assignment title or subject topic (for add action).' },
+          subject: { type: 'string', description: 'Course or subject name (e.g., Mathematics, Computer Science, Physics).' },
+          description: { type: 'string', description: 'Detailed questions, instructions, or requirements for the assignment.' },
+          dueDate: { type: 'string', description: 'Due date and time in ISO format or descriptive date (e.g. 2026-08-01T17:00:00Z).' },
+          autoDo: { type: 'boolean', description: 'Whether JARVIS should automatically solve the assignment before the due date.' }
+        },
+        required: ['action']
+      }
+    }
+  },
   {
     type: 'function',
     function: {

@@ -575,16 +575,6 @@ export class JarvisEngine {
 
     const isNewsQuery = /\b(news|latest|recent|today|current|update|happening|announce|release|winner|champion|won|score|result)\b/i.test(prompt);
 
-    // Build a focused, clean search query (strips "search" prefix, adds context)
-    function extractSearchQuery(raw: string): string {
-      let q = raw.replace(/^search\s+(for\s+|about\s+|the\s+)?/i, '').trim();
-      if (/^who won/i.test(q) && !/\b(fifa|world cup|nba|nfl|cricket|tennis|olympic|championship)\b/i.test(q)) {
-        const yearMatch = q.match(/\b(20\d{2})\b/);
-        if (yearMatch) q = `${q} results ${yearMatch[1]}`;
-      }
-      return q || raw;
-    }
-
     const searchQuery = await this.generateSearchQuery(prompt, apiKey, modelName);
 
     if (isFollowUp && this.lastSearchContext) {
@@ -618,7 +608,7 @@ export class JarvisEngine {
   }
 
 
-  private async generateSearchQuery(userMessage: string, apiKey: string, modelName: string): Promise<string> {
+  private async generateSearchQuery(userMessage: string, apiKey: string, _modelName: string): Promise<string> {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -724,11 +714,11 @@ export class JarvisEngine {
     if (needsSearch) {
       this.addLog('action', `Pre-emptively executing client-side web search...`);
       try {
-        const results = await clientSideSearch(prompt);
+        const { results } = await clientSideSearch(prompt);
         this.addLog('system', `Search retrieved ${results.length} items.`);
         if (results && results.length > 0) {
           searchContext = `\n\n[Internet Search Context]\nHere are the top web search results for "${prompt}":\n` + 
-            results.map((r, i) => `[${i+1}] ${r.title} - ${r.link}\nSnippet: ${r.snippet}`).join('\n\n') +
+            results.map((r: any, i: number) => `[${i+1}] ${r.title} - ${r.link}\nSnippet: ${r.snippet}`).join('\n\n') +
             `\nUse the search results to formulate a precise answer.`;
         }
       } catch (e) {

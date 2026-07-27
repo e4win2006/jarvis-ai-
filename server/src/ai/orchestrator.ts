@@ -13,7 +13,7 @@ function normalizeBaseUrl(url: string): string {
 }
 
 function wantsToolUse(prompt: string): boolean {
-  return /\b(search|look up|weather|news|stock|open|launch|browser|click|type|fill|screenshot|file|read|analy[sz]e|remind|alarm|timer|email|remember|recall|play|song|music)\b/i.test(prompt);
+  return /\b(search|look up|weather|news|stock|open|launch|browser|click|type|fill|screenshot|file|read|analy[sz]e|remind|alarm|timer|email|remember|recall|play|song|music|assignment|homework|due date|solve)\b/i.test(prompt);
 }
 
 // Filter out <think> reasoning logs from output

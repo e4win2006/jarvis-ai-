@@ -7,6 +7,7 @@ import {
 import { sounds } from '../utils/sounds';
 import { defaultTrackList } from '../utils/jarvisEngine';
 import { API_BASE } from '../utils/apiConfig';
+import { AssignmentWidget } from './AssignmentWidget';
 
 interface IoTGridWidgetsProps {
   devices: any; // returned by useIoTDevices
@@ -902,6 +903,9 @@ export function IoTGridWidgets({ devices, role = 'user' }: IoTGridWidgetsProps) 
         </div>
       </div>
       )}
+
+      {/* ASSIGNMENT AUTOMATION ENGINE HUD */}
+      <AssignmentWidget />
 
       {/* 7. ENERGY CENTRAL HUD (Full width on large screens) */}
       <div className="hud-panel col-span-1 md:col-span-2 lg:col-span-3 flex flex-col gap-3">

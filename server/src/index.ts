@@ -14,6 +14,7 @@ import { MCPManager } from './mcp/client';
 import { DesktopHelper } from './automation/desktop';
 import { Scheduler, setSchedulerNotifier } from './calendar/scheduler';
 import { WhatsAppService } from './automation/whatsapp';
+import { AssignmentsManager, setAssignmentsNotifier } from './assignments/assignmentsManager';
 
 dotenv.config();
 
@@ -179,6 +180,69 @@ app.post('/api/whatsapp/delay', (req, res) => {
     }
     SettingsDb.set('whatsapp_delay_seconds', String(delaySeconds));
     res.json({ success: true, delaySeconds });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Assignments REST API Routes ---
+app.get('/api/assignments', (_req, res) => {
+  try {
+    const assignments = AssignmentsManager.getAll();
+    res.json({ assignments });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/assignments', (req, res) => {
+  try {
+    const { title, subject, description, dueDate, autoDo } = req.body;
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required for an assignment.' });
+    }
+    const item = AssignmentsManager.add(title, subject, description, dueDate, autoDo !== false);
+    res.json({ success: true, item });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/assignments/:id', (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updated = AssignmentsManager.update(id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Assignment not found.' });
+    }
+    res.json({ success: true, item: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/assignments/:id', (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const success = AssignmentsManager.delete(id);
+    res.json({ success });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/assignments/:id/do', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const item = AssignmentsManager.getById(id);
+    if (!item) {
+      return res.status(404).json({ error: 'Assignment not found.' });
+    }
+    // Solve asynchronously and respond immediately with in_progress status
+    AssignmentsManager.solveAssignment(id).catch(err => {
+      console.error(`Error solving assignment #${id}:`, err);
+    });
+    res.json({ success: true, message: `JARVIS has started solving "${item.title}" on your behalf.` });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -586,6 +650,11 @@ setSchedulerNotifier((item) => {
       client.send(alertPayload);
     }
   }
+});
+
+// Bind assignment events to trigger WS emits to UI
+setAssignmentsNotifier((event, payload) => {
+  broadcastToWS(event, payload);
 });
 
 // Server Initialization Boot
